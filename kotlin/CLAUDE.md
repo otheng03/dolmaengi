@@ -6,6 +6,8 @@
 - CLAUDE.md should contain only project milestones and top-level decisions.
 - Please use the [docs](docs) directory for detailed information.
 - Do not modify decisions that have already been made.
+- Claude Code only makes very limited progress on what I ask for. (more conversational)
+- Don’t modify the README.md unless I tell you to.
 
 ## Project Overview
 
