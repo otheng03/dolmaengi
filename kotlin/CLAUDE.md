@@ -1,5 +1,12 @@
 # Distributed Transactional Key-Value Store
 
+## Rules to follow
+
+- CLAUDE.md must remain compact.
+- CLAUDE.md should contain only project milestones and top-level decisions.
+- Please use the [docs](docs) directory for detailed information.
+- Do not modify decisions that have already been made.
+
 ## Project Overview
 
 A learning-focused implementation of a distributed, transactional key-value database with in-memory performance and disk persistence. This project explores database internals from storage engines to distributed consensus.
@@ -38,16 +45,6 @@ A learning-focused implementation of a distributed, transactional key-value data
 - Conflict detection at commit time
 - Atomicity through WAL
 - Durability guarantees
-
-**API Design**:
-```
-begin_transaction() -> TxnID
-get(txn_id, key) -> value
-put(txn_id, key, value)
-delete(txn_id, key)
-commit(txn_id) -> success/abort
-abort(txn_id)
-```
 
 ### Phase 2: Storage Engine Sophistication
 
@@ -144,65 +141,43 @@ abort(txn_id)
 
 ## Technical Decisions
 
-### Language Options
+### Language Choice: Kotlin
 
-**Rust** (Recommended for deep learning)
-- Pros: Memory safety, performance, forces understanding of ownership
-- Cons: Steeper learning curve, slower initial development
-- Great for: Understanding low-level details, zero-cost abstractions
+**Why Kotlin:**
+- JVM ecosystem with excellent tooling and libraries
+- Coroutines for elegant async/concurrent programming
+- Strong type system with null safety
+- Interoperability with Java libraries (RocksDB, Netty, etc.)
+- Expressive syntax reduces boilerplate
+- Spring Boot integration for production features
 
-**Go** (Recommended for faster iteration)
-- Pros: Simple concurrency, faster development, good stdlib
-- Cons: GC pauses, less control over memory
-- Great for: Distributed systems, network programming
+**Kotlin Advantages for This Project:**
+- **Coroutines**: Natural fit for async I/O, network operations, and concurrent transactions
+- **Sealed classes**: Perfect for modeling transaction states and consensus messages
+- **Data classes**: Clean representation of WAL entries, messages, and storage structures
+- **Extension functions**: Elegant APIs for storage and transaction operations
+- **Collections API**: Rich functional operations for managing in-memory data structures
 
-**C++**
-- Pros: Maximum control, performance
-- Cons: Memory management complexity, longer development
-- Great for: If you want absolute control
+**Trade-offs:**
+- GC pauses (can be tuned with GC options like G1 or ZGC)
+- Slightly higher memory overhead than Rust/C++
+- Less control over memory layout than systems languages
 
-### Transaction Model
+### Transaction Model Choice: Optimistic MVCC
 
-**Optimistic MVCC (Recommended)**
+**Optimistic MVCC**
 - Each transaction operates on a snapshot
 - No locks during reads/writes
 - Conflict detection at commit time
 - Better for read-heavy workloads
 
-**Timestamp Ordering**
-- Each transaction gets a timestamp
-- Operations must respect timestamp order
-- Can abort transactions early
+### Consensus Protocol Choice: Raft
 
-**Pessimistic Locking**
-- 2PL (Two-Phase Locking)
-- Simpler to reason about
-- Can lead to deadlocks
-
-### Storage Format
-
-**WAL Format**:
-```
-[Transaction ID | Operation Type | Key | Value | Timestamp | Checksum]
-```
-
-**LSM-Tree SSTables**:
-```
-[Index Block | Data Blocks | Bloom Filter | Footer]
-```
-
-### Consensus Protocol
-
-**Raft** (Recommended)
+**Raft**
 - Understandable algorithm
 - Well-documented
 - Many reference implementations
 - Used by etcd, TiKV
-
-**Paxos**
-- More complex
-- Academic interest
-- Harder to implement correctly
 
 ## Development Milestones
 
@@ -272,64 +247,6 @@ abort(txn_id)
 - Latency (p50, p95, p99)
 - Scalability (performance vs. node count)
 
-## Resources & References
-
-### Papers
-- "Designing Data-Intensive Applications" by Martin Kleppmann (book)
-- "In Search of an Understandable Consensus Algorithm (Raft)" - Ongaro & Ousterhout
-- "Bigtable: A Distributed Storage System" - Google
-- "Spanner: Google's Globally-Distributed Database"
-- "Calvin: Fast Distributed Transactions"
-
-### Open Source Inspiration
-- **etcd**: Go, Raft-based, production KV store
-- **TiKV**: Rust, distributed transactional KV store (from TiDB)
-- **FoundationDB**: Inspiration for architecture
-- **RocksDB**: LSM-tree storage engine (C++)
-- **BadgerDB**: LSM-tree in Go
-
-### Educational Resources
-- CMU Database Systems course (15-445/645)
-- MIT 6.824 Distributed Systems
-- PingCAP Talent Plan (Rust-based DB course)
-
-## Project Structure Suggestion
-
-```
-/
-├── src/
-│   ├── storage/
-│   │   ├── memtable.rs
-│   │   ├── wal.rs
-│   │   ├── sstable.rs
-│   │   └── lsm.rs
-│   ├── transaction/
-│   │   ├── mvcc.rs
-│   │   ├── txn_manager.rs
-│   │   └── conflict_detector.rs
-│   ├── consensus/
-│   │   ├── raft.rs
-│   │   └── log.rs
-│   ├── distributed/
-│   │   ├── coordinator.rs
-│   │   ├── two_phase_commit.rs
-│   │   └── shard_manager.rs
-│   ├── network/
-│   │   ├── rpc.rs
-│   │   └── client.rs
-│   └── main.rs
-├── tests/
-│   ├── integration/
-│   ├── property/
-│   └── benchmark/
-├── docs/
-│   ├── architecture.md
-│   ├── api.md
-│   └── design-decisions.md
-├── Cargo.toml (or go.mod)
-└── README.md
-```
-
 ## Success Metrics
 
 **Phase 1 Success**:
@@ -354,34 +271,50 @@ abort(txn_id)
 - Can explain design trade-offs
 - Portfolio-worthy project
 
-## Common Pitfalls to Avoid
-
-1. **Skipping Phase 1**: Don't go distributed too early
-2. **Ignoring Testing**: Distributed bugs are hard to debug
-3. **Premature Optimization**: Get correctness first
-4. **Scope Creep**: Stick to the core features first
-5. **Not Writing Docs**: Document decisions as you go
-6. **Reinventing Everything**: Use existing libraries for non-core features (networking, serialization)
-
 ## Next Steps
 
-1. **Choose your language** (Rust or Go recommended)
-2. **Set up project structure**
+1. ✅ **Language chosen**: Kotlin with Spring Boot
+2. ✅ **Project structure set up**: Gradle + Spring Boot initialized
 3. **Start with Milestone 1**: Simple in-memory KV store
 4. **Read about MVCC** before starting transactions
 5. **Keep a design journal** documenting decisions and learnings
 
-## Questions to Consider
+## Kotlin-Specific Implementation Considerations
 
-- How will you handle schema evolution?
-- What serialization format? (Protocol Buffers, MessagePack, bincode)
-- Sync vs async I/O?
-- Threading model?
-- Error handling strategy?
-- Configuration management?
+### Serialization
+- **kotlinx.serialization**: Kotlin-native, compile-time safe
+- **Protocol Buffers**: Industry standard, good for RPC
+- **Apache Avro**: Schema evolution support
+- **kryo**: Fast JVM serialization
+
+### Async I/O & Concurrency
+- **Kotlin Coroutines**: Use for async WAL writes, network I/O
+- **Channels**: For communication between coroutines
+- **Flow**: Reactive streams for event processing
+- **Mutex/Semaphore**: Coroutine-safe synchronization
+
+### Networking
+- **ktor**: Kotlin-native async HTTP/RPC framework
+- **gRPC-Kotlin**: Type-safe RPC with coroutines
+- **Netty**: High-performance NIO (Java interop)
+
+### Testing
+- **kotest**: Kotlin testing framework with property-based testing
+- **MockK**: Kotlin mocking library
+- **testcontainers**: Integration testing with Docker
+
+### Performance Tuning
+- JVM GC options (G1GC, ZGC for low latency)
+- Use `inline` functions for hot paths
+- Array vs List trade-offs
+- Avoid excessive object allocation
 
 ---
 
 **Remember**: This is a learning project. The goal is understanding, not building the next production database. Take time to experiment, break things, and deeply understand each concept before moving on.
+
+# References
+
+You can find a detailed documents of the project in the [docs](docs) folder.
 
 Good luck! 🚀
