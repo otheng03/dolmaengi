@@ -48,25 +48,3 @@ Press Ctrl+] then type `quit` to exit.
 ```
 
 All tests should pass.
-
-## Development
-
-### Run with custom port
-Edit `Main.kt`:
-```kotlin
-val config = ServerConfig(
-    host = "0.0.0.0",
-    port = 8080  // Change port
-)
-```
-
-### Run tests continuously
-```bash
-./gradlew test --continuous
-```
-
-### Generate distribution
-```bash
-./gradlew installDist
-./build/install/kotlin/bin/kotlin
-```
