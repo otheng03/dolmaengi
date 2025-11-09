@@ -1,0 +1,6 @@
+{
+  "allowedCommands": [
+    "git push"
+  ],
+  "ide": "intellij"
+}
