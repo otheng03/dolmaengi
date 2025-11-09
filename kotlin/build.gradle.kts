@@ -48,7 +48,33 @@ kotlin {
 }
 
 application {
+    // Default to KV store, but allow running Sequencer via command-line args
+    val appArgs = providers.gradleProperty("appArgs").getOrElse("")
+    mainClass.set(
+        if (appArgs.contains("sequencer")) {
+            "dolmeangi.kotlin.sequencer.SequencerMainKt"
+        } else {
+            "dolmeangi.kotlin.MainKt"
+        }
+    )
+}
+
+// Custom task to run the Sequencer
+tasks.register<JavaExec>("runSequencer") {
+    group = "application"
+    description = "Run the Sequencer server"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dolmeangi.kotlin.sequencer.SequencerMainKt")
+    standardInput = System.`in`
+}
+
+// Custom task to run the KV Store
+tasks.register<JavaExec>("runKVStore") {
+    group = "application"
+    description = "Run the KV Store server"
+    classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("dolmeangi.kotlin.MainKt")
+    standardInput = System.`in`
 }
 
 tasks.withType<Test> {

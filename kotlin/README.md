@@ -22,22 +22,59 @@ This project explores database internals from storage engines to distributed con
 ./gradlew build
 ```
 
-### Run Server
+### Run KV Store Server
 ```bash
 ./gradlew run
+# or explicitly:
+./gradlew runKVStore
 ```
 
-The server will start on port 10000.
+The KV store server will start on port 10000.
+
+### Run Sequencer Server
+```bash
+./gradlew runSequencer --args="--initial=1 --port=10001"
+```
+
+The sequencer server will start on port 10001.
 
 ### Test with telnet
+
+#### KV Store (Port 10000)
 ```bash
 telnet localhost 10000
 ```
 
-Type any message and it will be echoed back:
+Example transaction:
 ```
-Hello!
-+ECHO: Hello!
+BEGIN
+:1
+
+PUT :1 user:alice {"name":"Alice","age":30}
++OK
+
+GET :1 user:alice
+{"name":"Alice","age":30}
+
+COMMIT :1
++OK
+```
+
+#### Sequencer (Port 10001)
+```bash
+telnet localhost 10001
+```
+
+Get sequence numbers:
+```
+GETSEQ
+:1
+
+GETSEQ
+:2
+
+CURRENT
+:3
 ```
 
 Press Ctrl+] then type `quit` to exit.
@@ -48,3 +85,9 @@ Press Ctrl+] then type `quit` to exit.
 ```
 
 All tests should pass.
+
+### View Code Coverage
+```bash
+./gradlew test
+open build/reports/jacoco/test/html/index.html
+```
