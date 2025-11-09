@@ -2,6 +2,7 @@
 
 ## Rules to follow
 
+- Don't touch Rules to follow.
 - CLAUDE.md must remain compact.
 - CLAUDE.md should contain only project milestones and top-level decisions.
 - Please use the [docs](docs) directory for detailed information.
@@ -183,16 +184,19 @@ A learning-focused implementation of a distributed, transactional key-value data
 
 ## Development Milestones
 
-### Milestone 1: Single-Node CRUD
-- [ ] Basic in-memory hash table
-- [ ] Simple get/put/delete operations
-- [ ] No transactions yet
+### Milestone 1: Single-Node CRUD ✅
+- [x] Basic in-memory hash table
+- [x] Simple get/put/delete operations
+- [x] DKSP protocol (text-based, human-readable)
+- [x] Network layer with ktor
+- [x] Connection handling and line buffering
 
-### Milestone 2: Single-Node Transactions
-- [ ] MVCC implementation
-- [ ] Transaction lifecycle
-- [ ] Conflict detection
-- [ ] WAL for durability
+### Milestone 2: Single-Node Transactions ✅ (Partial)
+- [x] MVCC implementation with snapshot isolation
+- [x] Transaction lifecycle (BEGIN, COMMIT, ABORT)
+- [x] Write-write conflict detection
+- [x] Version store for multi-version concurrency
+- [ ] WAL for durability (pending)
 
 ### Milestone 3: Recovery
 - [ ] WAL replay
@@ -275,11 +279,13 @@ A learning-focused implementation of a distributed, transactional key-value data
 
 ## Next Steps
 
-1. ✅ **Language chosen**: Kotlin with Spring Boot
-2. ✅ **Project structure set up**: Gradle + Spring Boot initialized
-3. **Start with Milestone 1**: Simple in-memory KV store
-4. **Read about MVCC** before starting transactions
-5. **Keep a design journal** documenting decisions and learnings
+1. ✅ **Language chosen**: Kotlin (no Spring Boot dependency removed)
+2. ✅ **Project structure set up**: Gradle + Kotlin + ktor network
+3. ✅ **Milestone 1 Complete**: DKSP protocol, network layer, in-memory KV store
+4. ✅ **Milestone 2 Partial**: MVCC with snapshot isolation, conflict detection
+5. **Current Focus**: WAL implementation for durability (Milestone 2 completion)
+6. **Next**: Recovery manager (Milestone 3)
+7. **Keep a design journal** documenting decisions and learnings
 
 ## Kotlin-Specific Implementation Considerations
 
@@ -301,7 +307,8 @@ A learning-focused implementation of a distributed, transactional key-value data
 - **Netty**: High-performance NIO (Java interop)
 
 ### Testing
-- **kotest**: Kotlin testing framework with property-based testing
+- **kotest**: Kotlin testing framework with property-based testing (✅ implemented)
+- **JaCoCo**: Code coverage reporting (✅ configured)
 - **MockK**: Kotlin mocking library
 - **testcontainers**: Integration testing with Docker
 

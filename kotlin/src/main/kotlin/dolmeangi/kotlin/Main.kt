@@ -1,6 +1,6 @@
 package dolmeangi.kotlin
 
-import dolmeangi.kotlin.handlers.EchoHandler
+import dolmeangi.kotlin.handlers.DKSPHandler
 import dolmeangi.kotlin.network.DKVServer
 import dolmeangi.kotlin.network.ServerConfig
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -11,7 +11,7 @@ private val logger = KotlinLogging.logger {}
 /**
  * Main entry point for the DKV server
  *
- * This starts a server with an echo handler for testing.
+ * This starts a server with DKSP protocol support.
  * Connect with: telnet localhost 10000
  */
 fun main() = runBlocking {
@@ -25,7 +25,7 @@ fun main() = runBlocking {
 
     val server = DKVServer(
         config = config,
-        handler = EchoHandler()
+        handler = DKSPHandler()
     )
 
     // Register shutdown hook

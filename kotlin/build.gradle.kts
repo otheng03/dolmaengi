@@ -1,6 +1,7 @@
 plugins {
     kotlin("jvm") version "1.9.25"
     id("application")
+    jacoco
 }
 
 group = "dolmeangi"
@@ -52,4 +53,36 @@ application {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    finalizedBy(tasks.jacocoTestReport) // Generate coverage report after tests
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test) // Ensure tests run before generating report
+
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+
+    // Print coverage summary to console
+    doLast {
+        val reportFile = file("${layout.buildDirectory.get()}/reports/jacoco/test/html/index.html")
+        if (reportFile.exists()) {
+            println("\n" + "=".repeat(80))
+            println("Code Coverage Report Generated:")
+            println("HTML Report: file://${reportFile.absolutePath}")
+            println("=".repeat(80) + "\n")
+        }
+    }
+}
+
+tasks.jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            limit {
+                minimum = "0.0".toBigDecimal() // Set minimum coverage threshold
+            }
+        }
+    }
 }
