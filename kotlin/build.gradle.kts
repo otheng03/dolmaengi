@@ -73,7 +73,7 @@ tasks.register<JavaExec>("runKVStore") {
     group = "application"
     description = "Run the KV Store server"
     classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("dolmeangi.kotlin.MainKt")
+    mainClass.set("dolmeangi.kotlin.kvstore.KVStoreMainKt")
     standardInput = System.`in`
 }
 

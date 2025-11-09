@@ -1,4 +1,4 @@
-package dolmeangi.kotlin
+package dolmeangi.kotlin.kvstore
 
 import dolmeangi.kotlin.kvstore.handler.KVSPPHandler
 import dolmeangi.kotlin.common.network.TCPServer
