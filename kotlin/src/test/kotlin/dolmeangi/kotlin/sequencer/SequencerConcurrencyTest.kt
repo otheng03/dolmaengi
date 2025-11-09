@@ -1,5 +1,6 @@
 package dolmeangi.kotlin.sequencer
 
+import dolmeangi.kotlin.sequencer.handler.SequencerHandler
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe

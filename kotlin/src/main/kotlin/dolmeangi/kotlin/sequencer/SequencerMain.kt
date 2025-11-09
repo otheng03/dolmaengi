@@ -1,7 +1,9 @@
 package dolmeangi.kotlin.sequencer
 
-import dolmeangi.kotlin.network.DKVServer
-import dolmeangi.kotlin.network.ServerConfig
+import dolmeangi.kotlin.common.network.TCPServer
+import dolmeangi.kotlin.common.network.ServerConfig
+import dolmeangi.kotlin.sequencer.config.SequencerConfig
+import dolmeangi.kotlin.sequencer.handler.SequencerHandler
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.runBlocking
 
@@ -43,7 +45,7 @@ fun main(args: Array<String>) = runBlocking {
         maxConnections = config.maxConnections
     )
 
-    val server = DKVServer(
+    val server = TCPServer(
         config = serverConfig,
         handler = SequencerHandler(sequencer)
     )

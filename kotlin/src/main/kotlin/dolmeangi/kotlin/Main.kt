@@ -1,8 +1,8 @@
 package dolmeangi.kotlin
 
-import dolmeangi.kotlin.handlers.DKSPHandler
-import dolmeangi.kotlin.network.DKVServer
-import dolmeangi.kotlin.network.ServerConfig
+import dolmeangi.kotlin.kvstore.handler.KVSPPHandler
+import dolmeangi.kotlin.common.network.TCPServer
+import dolmeangi.kotlin.common.network.ServerConfig
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.runBlocking
 
@@ -23,9 +23,9 @@ fun main() = runBlocking {
         maxConnections = 1000
     )
 
-    val server = DKVServer(
+    val server = TCPServer(
         config = config,
-        handler = DKSPHandler()
+        handler = KVSPPHandler()
     )
 
     // Register shutdown hook
