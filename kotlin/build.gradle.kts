@@ -1,7 +1,8 @@
 plugins {
-    kotlin("jvm") version "1.9.25"
+    kotlin("jvm") version "2.1.20"
     id("application")
     jacoco
+    id("com.diffplug.spotless") version "6.25.0"
 }
 
 group = "dolmeangi"
@@ -111,4 +112,13 @@ tasks.jacocoTestCoverageVerification {
             }
         }
     }
+}
+
+// Make sure spotlessApply runs before compiling
+tasks.named("compileKotlin") {
+    dependsOn("spotlessApply")
+}
+
+tasks.named("compileTestKotlin") {
+    dependsOn("spotlessApply")
 }

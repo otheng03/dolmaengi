@@ -1,5 +1,7 @@
 package dolmeangi.kotlin.kvstore.transaction
 
+import dolmeangi.kotlin.common.client.SequencerClientException
+import dolmeangi.kotlin.common.transaction.SequenceGenerator
 import dolmeangi.kotlin.kvstore.protocol.TransactionId
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.concurrent.ConcurrentHashMap
@@ -25,6 +27,7 @@ sealed class TransactionException(message: String) : Exception(message) {
     class NotFound(txnId: TransactionId) : TransactionException("Transaction ${txnId.value} not found")
     class AlreadyAborted(txnId: TransactionId) : TransactionException("Transaction ${txnId.value} was aborted")
     class AlreadyCommitted(txnId: TransactionId) : TransactionException("Transaction ${txnId.value} was already committed")
+    class SequencerUnavailable(cause: Throwable) : TransactionException("Sequencer unavailable: ${cause.message}")
 }
 
 /**
@@ -36,11 +39,11 @@ sealed class TransactionException(message: String) : Exception(message) {
  * - Writes are buffered in transaction's write set
  * - Conflict detection at commit time (write-write conflicts)
  * - Optimistic concurrency control
+ * - Uses distributed sequence numbers from SequencerClient
  */
-class TransactionManager {
-
-    // Global transaction ID counter
-    private val txnIdCounter = AtomicLong(0)
+class TransactionManager(
+    private val sequenceGenerator: SequenceGenerator
+) {
 
     // Active transactions
     private val transactions = ConcurrentHashMap<TransactionId, Transaction>()
@@ -56,9 +59,17 @@ class TransactionManager {
 
     /**
      * Begin a new transaction
+     * Now uses SequencerClient to get distributed transaction IDs
      */
-    fun begin(): TransactionId {
-        val txnId = TransactionId(txnIdCounter.incrementAndGet())
+    suspend fun begin(): TransactionId {
+        val txnIdValue = try {
+            sequenceGenerator.getNext()
+        } catch (e: SequencerClientException) {
+            logger.error { "Failed to get sequence number from sequencer: ${e.message}" }
+            throw TransactionException.SequencerUnavailable(e)
+        }
+
+        val txnId = TransactionId(txnIdValue)
         val snapshot = lastCommittedTxnId.get()
 
         val transaction = Transaction(

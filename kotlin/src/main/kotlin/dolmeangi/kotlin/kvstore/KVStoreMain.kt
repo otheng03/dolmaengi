@@ -1,6 +1,9 @@
 package dolmeangi.kotlin.kvstore
 
+import dolmeangi.kotlin.common.client.SequencerClient
+import dolmeangi.kotlin.common.client.SequencerClientConfig
 import dolmeangi.kotlin.kvstore.handler.KVSPPHandler
+import dolmeangi.kotlin.kvstore.transaction.TransactionManager
 import dolmeangi.kotlin.common.network.TCPServer
 import dolmeangi.kotlin.common.network.ServerConfig
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -17,15 +20,39 @@ private val logger = KotlinLogging.logger {}
 fun main() = runBlocking {
     logger.info { "Starting Distributed KV Store Server..." }
 
-    val config = ServerConfig(
+    // Initialize SequencerClient
+    val sequencerConfig = SequencerClientConfig(
+        host = "localhost",
+        port = 10001,
+        connectTimeoutMs = 5_000,
+        requestTimeoutMs = 5_000
+    )
+    
+    val sequencerClient = SequencerClient(sequencerConfig)
+    logger.info { "SequencerClient initialized with config: $sequencerConfig" }
+
+    // Test connection to sequencer during startup
+    try {
+        val currentSeq = sequencerClient.getCurrent()
+        logger.info { "Connected to Sequencer successfully. Current sequence: $currentSeq" }
+    } catch (e: Exception) {
+        logger.error(e) { "Failed to connect to Sequencer during startup" }
+        sequencerClient.close()
+        return@runBlocking
+    }
+
+    // Initialize TransactionManager with SequencerClient
+    val txnManager = TransactionManager(sequencerClient)
+
+    val serverConfig = ServerConfig(
         host = "0.0.0.0",
         port = 10000,
         maxConnections = 1000
     )
 
     val server = TCPServer(
-        config = config,
-        handler = KVSPPHandler()
+        config = serverConfig,
+        handler = KVSPPHandler(txnManager)
     )
 
     // Register shutdown hook
@@ -33,18 +60,22 @@ fun main() = runBlocking {
         logger.info { "Shutdown signal received" }
         runBlocking {
             server.stop()
+            sequencerClient.close()
+            logger.info { "SequencerClient closed" }
         }
     })
 
     // Start server
     server.start()
 
-    logger.info { "Server running on ${config.host}:${config.port}" }
+    logger.info { "Server running on ${serverConfig.host}:${serverConfig.port}" }
+    logger.info { "Connected to Sequencer on ${sequencerConfig.host}:${sequencerConfig.port}" }
     logger.info { "Press Ctrl+C to stop" }
-    logger.info { "Test with: telnet localhost ${config.port}" }
+    logger.info { "Test with: telnet localhost ${serverConfig.port}" }
 
     // Wait for termination
     server.awaitTermination()
 
     logger.info { "Server terminated" }
+    sequencerClient.close()
 }

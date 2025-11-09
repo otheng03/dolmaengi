@@ -1,8 +1,6 @@
 package dolmeangi.kotlin.kvstore.transaction
 
-import dolmeangi.kotlin.kvstore.transaction.CommitResult
-import dolmeangi.kotlin.kvstore.transaction.TransactionException
-import dolmeangi.kotlin.kvstore.transaction.TransactionManager
+import dolmeangi.kotlin.common.transaction.MockSequencerClient
 import dolmeangi.kotlin.kvstore.protocol.TransactionId
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
@@ -11,27 +9,29 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 
 class TransactionManagerTest : FunSpec({
 
+    lateinit var txnManager: TransactionManager
+
+    beforeTest {
+        txnManager = TransactionManager(MockSequencerClient())
+    }
+
     test("begin creates a new transaction") {
-        val txnManager = TransactionManager()
         val txnId = txnManager.begin()
         (txnId.value > 0) shouldBe true
     }
 
     test("begin creates unique transaction IDs") {
-        val txnManager = TransactionManager()
         val txnId1 = txnManager.begin()
         val txnId2 = txnManager.begin()
         (txnId2.value > txnId1.value) shouldBe true
     }
 
     test("get returns null for non-existent key") {
-        val txnManager = TransactionManager()
         val txnId = txnManager.begin()
         txnManager.get(txnId, "nonexistent") shouldBe null
     }
 
     test("put and get within same transaction") {
-        val txnManager = TransactionManager()
         val txnId = txnManager.begin()
 
         txnManager.put(txnId, "key1", "value1")
@@ -39,7 +39,6 @@ class TransactionManagerTest : FunSpec({
     }
 
     test("commit empty transaction succeeds") {
-        val txnManager = TransactionManager()
         val txnId = txnManager.begin()
 
         val result = txnManager.commit(txnId)
@@ -47,7 +46,6 @@ class TransactionManagerTest : FunSpec({
     }
 
     test("commit transaction with writes succeeds") {
-        val txnManager = TransactionManager()
         val txnId = txnManager.begin()
 
         txnManager.put(txnId, "key1", "value1")
@@ -57,8 +55,6 @@ class TransactionManagerTest : FunSpec({
     }
 
     test("committed data is visible to new transactions") {
-        val txnManager = TransactionManager()
-
         // Transaction 1: write and commit
         val txn1 = txnManager.begin()
         txnManager.put(txn1, "key1", "value1")
@@ -70,8 +66,6 @@ class TransactionManagerTest : FunSpec({
     }
 
     test("snapshot isolation - transaction does not see concurrent writes") {
-        val txnManager = TransactionManager()
-
         // Transaction 1 starts
         val txn1 = txnManager.begin()
 
@@ -85,8 +79,6 @@ class TransactionManagerTest : FunSpec({
     }
 
     test("write-write conflict detection") {
-        val txnManager = TransactionManager()
-
         // Initial state
         val txn0 = txnManager.begin()
         txnManager.put(txn0, "counter", "0")
@@ -110,8 +102,6 @@ class TransactionManagerTest : FunSpec({
     }
 
     test("delete marks key as deleted") {
-        val txnManager = TransactionManager()
-
         // Create a key
         val txn1 = txnManager.begin()
         txnManager.put(txn1, "key1", "value1")
@@ -128,8 +118,6 @@ class TransactionManagerTest : FunSpec({
     }
 
     test("abort transaction discards writes") {
-        val txnManager = TransactionManager()
-
         val txnId = txnManager.begin()
         txnManager.put(txnId, "key1", "value1")
         txnManager.abort(txnId)
@@ -140,35 +128,30 @@ class TransactionManagerTest : FunSpec({
     }
 
     test("get on non-existent transaction throws exception") {
-        val txnManager = TransactionManager()
         shouldThrow<TransactionException.NotFound> {
             txnManager.get(TransactionId(999), "key1")
         }
     }
 
     test("put on non-existent transaction throws exception") {
-        val txnManager = TransactionManager()
         shouldThrow<TransactionException.NotFound> {
             txnManager.put(TransactionId(999), "key1", "value1")
         }
     }
 
     test("commit on non-existent transaction throws exception") {
-        val txnManager = TransactionManager()
         shouldThrow<TransactionException.NotFound> {
             txnManager.commit(TransactionId(999))
         }
     }
 
     test("abort on non-existent transaction throws exception") {
-        val txnManager = TransactionManager()
         shouldThrow<TransactionException.NotFound> {
             txnManager.abort(TransactionId(999))
         }
     }
 
     test("get on aborted transaction throws exception") {
-        val txnManager = TransactionManager()
         val txnId = txnManager.begin()
         txnManager.abort(txnId)
 
@@ -178,7 +161,6 @@ class TransactionManagerTest : FunSpec({
     }
 
     test("put on aborted transaction throws exception") {
-        val txnManager = TransactionManager()
         val txnId = txnManager.begin()
         txnManager.abort(txnId)
 
@@ -188,7 +170,6 @@ class TransactionManagerTest : FunSpec({
     }
 
     test("commit on aborted transaction throws exception") {
-        val txnManager = TransactionManager()
         val txnId = txnManager.begin()
         txnManager.abort(txnId)
 
@@ -198,7 +179,6 @@ class TransactionManagerTest : FunSpec({
     }
 
     test("get on committed transaction throws exception") {
-        val txnManager = TransactionManager()
         val txnId = txnManager.begin()
         txnManager.commit(txnId)
 
@@ -208,8 +188,6 @@ class TransactionManagerTest : FunSpec({
     }
 
     test("multiple concurrent transactions without conflicts") {
-        val txnManager = TransactionManager()
-
         // Transaction 1: write key1
         val txn1 = txnManager.begin()
         txnManager.put(txn1, "key1", "value1")

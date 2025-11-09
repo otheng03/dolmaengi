@@ -1,5 +1,7 @@
 package dolmeangi.kotlin.kvstore.handler
 
+import dolmeangi.kotlin.common.transaction.MockSequencerClient
+import dolmeangi.kotlin.kvstore.transaction.TransactionManager
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -7,8 +9,13 @@ import io.kotest.matchers.string.shouldStartWith
 
 class KVSPHandlerTest : FunSpec({
 
+    lateinit var handler: KVSPPHandler
+
+    beforeTest {
+        handler = KVSPPHandler(TransactionManager(MockSequencerClient()))
+    }
+
     test("handle BEGIN returns transaction ID") {
-        val handler = KVSPPHandler()
         val response = handler.handle("BEGIN")
 
         response.shouldStartWith(":")
@@ -16,8 +23,6 @@ class KVSPHandlerTest : FunSpec({
     }
 
     test("handle complete transaction flow") {
-        val handler = KVSPPHandler()
-
         // Begin transaction
         val beginResponse = handler.handle("BEGIN")
         val txnId = beginResponse.trim().substring(1) // Remove ':' prefix and '\r\n'
@@ -36,8 +41,6 @@ class KVSPHandlerTest : FunSpec({
     }
 
     test("handle GET for non-existent key returns null") {
-        val handler = KVSPPHandler()
-
         val beginResponse = handler.handle("BEGIN")
         val txnId = beginResponse.trim().substring(1)
 
@@ -46,8 +49,6 @@ class KVSPHandlerTest : FunSpec({
     }
 
     test("handle DELETE removes key") {
-        val handler = KVSPPHandler()
-
         // Create and commit a key
         val txn1 = handler.handle("BEGIN").trim().substring(1)
         handler.handle("PUT :$txn1 key1 value1")
@@ -66,8 +67,6 @@ class KVSPHandlerTest : FunSpec({
     }
 
     test("handle ABORT discards changes") {
-        val handler = KVSPPHandler()
-
         // Begin and write
         val txnId = handler.handle("BEGIN").trim().substring(1)
         handler.handle("PUT :$txnId key1 value1")
@@ -83,8 +82,6 @@ class KVSPHandlerTest : FunSpec({
     }
 
     test("handle write-write conflict") {
-        val handler = KVSPPHandler()
-
         // Set initial value
         val txn0 = handler.handle("BEGIN").trim().substring(1)
         handler.handle("PUT :$txn0 counter 0")
@@ -108,7 +105,6 @@ class KVSPHandlerTest : FunSpec({
     }
 
     test("handle unknown command returns error") {
-        val handler = KVSPPHandler()
         val response = handler.handle("FOOBAR")
 
         response.shouldStartWith("-ERR")
@@ -116,7 +112,6 @@ class KVSPHandlerTest : FunSpec({
     }
 
     test("handle invalid transaction ID returns error") {
-        val handler = KVSPPHandler()
         val response = handler.handle("COMMIT :abc")
 
         response.shouldStartWith("-ERR")
@@ -124,7 +119,6 @@ class KVSPHandlerTest : FunSpec({
     }
 
     test("handle non-existent transaction returns error") {
-        val handler = KVSPPHandler()
         val response = handler.handle("COMMIT :999999")
 
         response.shouldStartWith("-NOTFOUND")
@@ -132,8 +126,6 @@ class KVSPHandlerTest : FunSpec({
     }
 
     test("handle operation on aborted transaction returns error") {
-        val handler = KVSPPHandler()
-
         val txnId = handler.handle("BEGIN").trim().substring(1)
         handler.handle("ABORT :$txnId")
 
@@ -142,8 +134,6 @@ class KVSPHandlerTest : FunSpec({
     }
 
     test("handle PUT with value containing spaces") {
-        val handler = KVSPPHandler()
-
         val txnId = handler.handle("BEGIN").trim().substring(1)
         handler.handle("PUT :$txnId user:name Alice Smith")
 
@@ -152,8 +142,6 @@ class KVSPHandlerTest : FunSpec({
     }
 
     test("handle case insensitive commands") {
-        val handler = KVSPPHandler()
-
         val response1 = handler.handle("begin")
         response1.shouldStartWith(":")
 
@@ -165,8 +153,6 @@ class KVSPHandlerTest : FunSpec({
     }
 
     test("handle snapshot isolation") {
-        val handler = KVSPPHandler()
-
         // Transaction 1 starts
         val txn1 = handler.handle("BEGIN").trim().substring(1)
 
@@ -181,8 +167,6 @@ class KVSPHandlerTest : FunSpec({
     }
 
     test("handle multiple keys in a single transaction") {
-        val handler = KVSPPHandler()
-
         // Begin transaction
         val txnId = handler.handle("BEGIN").trim().substring(1)
 

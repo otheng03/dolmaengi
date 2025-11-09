@@ -1,5 +1,6 @@
 package dolmeangi.kotlin.common.client
 
+import dolmeangi.kotlin.common.transaction.SequenceGenerator
 import io.ktor.network.selector.SelectorManager
 import kotlinx.coroutines.Dispatchers
 
@@ -22,7 +23,7 @@ data class SequencerClientConfig(
 class SequencerClient(
     private val config: SequencerClientConfig = SequencerClientConfig(),
     private val selectorFactory: () -> SelectorManager = { SelectorManager(Dispatchers.IO) }
-) : AutoCloseable {
+) : SequenceGenerator, AutoCloseable {
 
     private val tcpClient = TCPClient(
         config = TCPClientConfig(
@@ -35,9 +36,9 @@ class SequencerClient(
         selectorFactory = selectorFactory
     )
 
-    suspend fun getNext(): Long = execute("GETSEQ")
+    override suspend fun getNext(): Long = execute("GETSEQ")
 
-    suspend fun getCurrent(): Long = execute("CURRENT")
+    override suspend fun getCurrent(): Long = execute("CURRENT")
 
     private suspend fun execute(command: String): Long = try {
         tcpClient.send(command, ::parseIntegerResponse)

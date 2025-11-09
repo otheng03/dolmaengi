@@ -24,7 +24,7 @@ private val logger = KotlinLogging.logger {}
  * 3. Encodes responses in DKSP format
  */
 class KVSPPHandler(
-    private val txnManager: TransactionManager = TransactionManager()
+    private val txnManager: TransactionManager
 ) : RequestHandler {
 
     override suspend fun handle(request: String): String {
@@ -53,6 +53,7 @@ class KVSPPHandler(
                 is TransactionException.NotFound -> ErrorType.NOTFOUND
                 is TransactionException.AlreadyAborted -> ErrorType.ABORTED
                 is TransactionException.AlreadyCommitted -> ErrorType.ERR
+                is TransactionException.SequencerUnavailable -> ErrorType.ERR
             }
             ResponseEncoder.encode(
                 Response.Error(errorType, e.message ?: "Transaction error")
@@ -70,7 +71,7 @@ class KVSPPHandler(
     /**
      * Execute a parsed command
      */
-    private fun executeCommand(command: Command): Response {
+    private suspend fun executeCommand(command: Command): Response {
         return when (command) {
             is Command.Begin -> handleBegin()
             is Command.Commit -> handleCommit(command.txnId)
@@ -81,7 +82,7 @@ class KVSPPHandler(
         }
     }
 
-    private fun handleBegin(): Response {
+    private suspend fun handleBegin(): Response {
         val txnId = txnManager.begin()
         logger.debug { "Started transaction ${txnId.value}" }
         return Response.Integer(txnId.value)
