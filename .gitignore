@@ -1,0 +1,65 @@
+### IntelliJ IDEA ###
+.idea/
+!.idea/codeStyles/
+!.idea/runConfigurations/
+!.idea/vcs.xml
+*.iml
+
+### Gradle ###
+.gradle/
+build/
+out/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Ignore Gradle GUI config
+gradle-app.setting
+
+# Avoid ignoring Gradle wrapper properties
+!gradle-wrapper.properties
+
+### Kotlin/Java ###
+*.class
+*.log
+*.jar
+*.war
+*.ear
+
+### OS ###
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+### Logs and temp files ###
+*.log
+*.tmp
+*.swp
+*.swo
+
+### JetBrains caches ###
+out/
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**/dictionaries
+.idea/**/shelf/
+.idea/**/dataSources/
+.idea/**/dataSources.ids
+.idea/**/dataSources.local.xml
+.idea/**/sqlDataSources.xml
+.idea/**/dynamic.xml
+.idea/**/uiDesigner.xml
+.idea/**/gradle.xml
+.idea/**/libraries/
+
+### VS Code (if sometimes opened there) ###
+.vscode/
+
+### Kotlin compiler ###
+*.kotlin_module
+
