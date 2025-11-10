@@ -217,11 +217,6 @@ A learning-focused implementation of a distributed, transactional key-value data
 - [x] Write-write conflict detection
 - [x] Version store for multi-version concurrency
 - [x] LogServer with Write-Ahead Log (WAL) for durability
-  - Append-only log segments with CRC32 checksums
-  - JSON serialization for log entries
-  - DKSP protocol (APPEND_LOG, GET_LOGS, GET_LAST_INDEX)
-  - In-memory index for fast lookups
-  - Segment rotation support
 
 ### Milestone 3: Recovery
 - [ ] WAL replay
@@ -309,9 +304,10 @@ A learning-focused implementation of a distributed, transactional key-value data
 3. ✅ **Milestone 1 Complete**: DKSP protocol, network layer, in-memory KV store
 4. ✅ **Milestone 2 Complete**: MVCC transactions + LogServer (WAL)
 5. **Current Focus**:
-   - Fix persistence test in LogServer (segment scanning bug)
    - Integrate Sequencer/KVStore with LogServer for durability
    - Add log replay on KVStore recovery
+   - Add Raft consensus protocol
+   - Add documentation
 6. **Next**: Recovery manager (Milestone 3) - WAL replay and checkpointing
 7. **Keep a design journal** documenting decisions and learnings
 
