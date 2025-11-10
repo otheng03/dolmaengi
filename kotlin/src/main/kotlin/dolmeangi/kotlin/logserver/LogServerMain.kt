@@ -105,6 +105,9 @@ fun main(args: Array<String>) = runBlocking {
  *   --port=10002
  *   --host=0.0.0.0
  *   --data-dir=./data/logserver
+ *   --raft (enable Raft consensus)
+ *   --node-id=1
+ *   --cluster=1@localhost:10002:10102,2@localhost:10003:10103,3@localhost:10004:10104
  */
 private fun parseArgs(args: Array<String>): LogServerConfig {
     var host = "0.0.0.0"
@@ -113,6 +116,14 @@ private fun parseArgs(args: Array<String>): LogServerConfig {
     var dataDir = "./data/logserver"
     var maxSegmentSizeBytes = 64L * 1024 * 1024
     var maxEntriesPerSegment = 100_000
+
+    // Raft parameters
+    var raftEnabled = false
+    var nodeId: dolmeangi.kotlin.logserver.raft.model.NodeId? = null
+    var clusterSpec: String? = null
+    var electionTimeoutMinMs = 1500L
+    var electionTimeoutMaxMs = 3000L
+    var heartbeatIntervalMs = 500L
 
     args.forEach { arg ->
         when {
@@ -138,6 +149,29 @@ private fun parseArgs(args: Array<String>): LogServerConfig {
                 maxEntriesPerSegment = arg.substringAfter("=").toIntOrNull()
                     ?: throw IllegalArgumentException("Invalid max-entries: $arg")
             }
+            arg == "--raft" -> {
+                raftEnabled = true
+            }
+            arg.startsWith("--node-id=") -> {
+                val id = arg.substringAfter("=").toIntOrNull()
+                    ?: throw IllegalArgumentException("Invalid node-id: $arg")
+                nodeId = dolmeangi.kotlin.logserver.raft.model.NodeId(id)
+            }
+            arg.startsWith("--cluster=") -> {
+                clusterSpec = arg.substringAfter("=")
+            }
+            arg.startsWith("--election-timeout-min=") -> {
+                electionTimeoutMinMs = arg.substringAfter("=").toLongOrNull()
+                    ?: throw IllegalArgumentException("Invalid election-timeout-min: $arg")
+            }
+            arg.startsWith("--election-timeout-max=") -> {
+                electionTimeoutMaxMs = arg.substringAfter("=").toLongOrNull()
+                    ?: throw IllegalArgumentException("Invalid election-timeout-max: $arg")
+            }
+            arg.startsWith("--heartbeat-interval=") -> {
+                heartbeatIntervalMs = arg.substringAfter("=").toLongOrNull()
+                    ?: throw IllegalArgumentException("Invalid heartbeat-interval: $arg")
+            }
             else -> {
                 logger.warn { "Unknown argument: $arg (ignored)" }
             }
@@ -150,6 +184,12 @@ private fun parseArgs(args: Array<String>): LogServerConfig {
         maxConnections = maxConnections,
         dataDir = dataDir,
         maxSegmentSizeBytes = maxSegmentSizeBytes,
-        maxEntriesPerSegment = maxEntriesPerSegment
+        maxEntriesPerSegment = maxEntriesPerSegment,
+        raftEnabled = raftEnabled,
+        nodeId = nodeId,
+        clusterSpec = clusterSpec,
+        electionTimeoutMinMs = electionTimeoutMinMs,
+        electionTimeoutMaxMs = electionTimeoutMaxMs,
+        heartbeatIntervalMs = heartbeatIntervalMs
     )
 }

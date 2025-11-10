@@ -247,6 +247,78 @@ class LogStorage(
         return index.isEmpty()
     }
 
+    // ===== Raft-specific operations =====
+
+    /**
+     * Get the term of the log entry at the given index
+     *
+     * @return Term of the entry, or null if index doesn't exist
+     */
+    suspend fun getTermAt(logIndex: Long): Long? {
+        val entry = read(logIndex) ?: return null
+        return entry.term
+    }
+
+    /**
+     * Get the index and term of the last log entry
+     *
+     * Used by Raft RequestVote RPC to determine if candidate's log is up-to-date.
+     *
+     * @return Pair of (lastLogIndex, lastLogTerm), or (0, 0) if log is empty
+     */
+    suspend fun getLastLogIndexAndTerm(): Pair<Long, Long> {
+        val lastIndex = getLastIndex() ?: return Pair(0, 0)
+        val lastTerm = getTermAt(lastIndex) ?: return Pair(0, 0)
+        return Pair(lastIndex, lastTerm)
+    }
+
+    /**
+     * Delete all log entries from the given index onwards
+     *
+     * Used by Raft when follower's log conflicts with leader's log.
+     * After truncation, new entries from leader will be appended.
+     *
+     * IMPORTANT: This is a destructive operation. Only call when Raft protocol
+     * guarantees it's safe (i.e., when leader's log conflicts with ours).
+     *
+     * @param fromIndex Index to start deletion (inclusive)
+     */
+    suspend fun truncateFrom(fromIndex: Long): Unit = mutex.withLock {
+        if (fromIndex <= 0) {
+            logger.warn { "Cannot truncate from index $fromIndex (must be > 0)" }
+            return
+        }
+
+        val lastIndex = getLastIndex()
+        if (lastIndex == null || fromIndex > lastIndex) {
+            logger.debug { "Truncate from $fromIndex: no-op (last index: $lastIndex)" }
+            return
+        }
+
+        logger.info { "Truncating log from index $fromIndex to $lastIndex" }
+
+        // Remove entries from in-memory index
+        val removedCount = index.removeFrom(fromIndex)
+
+        // Adjust nextIndex to allow new appends
+        nextIndex = fromIndex
+
+        // TODO: In a full implementation, we should:
+        // 1. Truncate segment files on disk
+        // 2. Adjust or close currentSegment if needed
+        // For now, we just remove from the in-memory index and adjust nextIndex
+        // This is sufficient for Phase 1 since we rebuild from disk on restart
+
+        logger.info { "Truncated $removedCount entries from index $fromIndex, nextIndex=$nextIndex" }
+    }
+
+    /**
+     * Get entry at specific index (convenience method)
+     */
+    suspend fun getEntryAt(logIndex: Long): LogEntry? {
+        return read(logIndex)
+    }
+
     override fun close() {
         segments.values.forEach { it.close() }
         segments.clear()

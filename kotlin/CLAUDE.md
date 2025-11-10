@@ -304,12 +304,40 @@ A learning-focused implementation of a distributed, transactional key-value data
 3. ✅ **Milestone 1 Complete**: DKSP protocol, network layer, in-memory KV store
 4. ✅ **Milestone 2 Complete**: MVCC transactions + LogServer (WAL)
 5. **Current Focus**:
-   - Integrate Sequencer/KVStore with LogServer for durability
-   - Add log replay on KVStore recovery
-   - Add Raft consensus protocol
-   - Add documentation
-6. **Next**: Recovery manager (Milestone 3) - WAL replay and checkpointing
-7. **Keep a design journal** documenting decisions and learnings
+We've successfully implemented the complete Raft leader election mechanism! Here's what was built:
+
+Components Created:
+- RaftRPC.kt - RPC message structures:
+  - RequestVoteRequest/Response
+  - AppendEntriesRequest/Response (skeleton for 5C)
+- RaftRPCClient.kt - TCP client for sending RPCs to peers
+  - Async Request/Response with timeout
+  - JSON serialization over TCP sockets
+- RaftRPCHandler.kt - Server-side RPC request handler
+  - Routes incoming RPCs to RaftNode
+- RaftNode enhancements:
+  - startElection() - Send RequestVote RPCs in parallel
+  - handleRequestVote() - Full vote granting logic per Raft spec
+  - handleAppendEntries() - Basic heartbeat handling (full impl in 5C)
+  - isCandidateLogUpToDate() - Log comparison logic
+
+How It Works:
+- Election Trigger: Election timeout fires → node becomes CANDIDATE
+- Vote Request: Candidate sends RequestVote RPCs to all peers in parallel
+- Vote Granting: Followers grant votes if:
+  - Haven't voted this term (or already voted for this candidate)
+  - Candidate's log is at least as up-to-date
+  - Candidate's term ≥ follower's term
+- Leader Election: Candidate with majority votes becomes LEADER
+- Leader Maintenance: Leader sends periodic heartbeats to maintain authority
+
+Next Steps:
+- To fully test and integrate, we need to:
+  - Build and test the code to ensure compilation
+  - Update CLAUDE.md to mark Milestone 5B complete
+  - Prepare for Milestone 5C: Log Replication (AppendEntries with actual log entries)
+  - **Next**: Recovery manager (Milestone 3) - WAL replay and checkpointing
+  - **Keep a design journal** documenting decisions and learnings
 
 ## Kotlin-Specific Implementation Considerations
 

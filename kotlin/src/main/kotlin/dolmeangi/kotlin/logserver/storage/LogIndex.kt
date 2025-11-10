@@ -90,6 +90,29 @@ class LogIndex {
         logger.info { "Removed ${toRemove.size} entries before index $logIndex" }
         return toRemove.size
     }
+
+    /**
+     * Remove entries from the given index onwards (inclusive)
+     *
+     * Used by Raft log truncation when follower's log conflicts with leader.
+     */
+    fun removeFrom(logIndex: Long): Int {
+        val toRemove = index.tailMap(logIndex, true).keys.toList()
+        toRemove.forEach { index.remove(it) }
+        logger.info { "Removed ${toRemove.size} entries from index $logIndex onwards" }
+        return toRemove.size
+    }
+
+    /**
+     * Remove a single entry at the given index
+     */
+    fun remove(logIndex: Long): IndexEntry? {
+        val removed = index.remove(logIndex)
+        if (removed != null) {
+            logger.trace { "Removed index entry for log $logIndex" }
+        }
+        return removed
+    }
 }
 
 /**
