@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm") version "2.1.20"
+    kotlin("plugin.serialization") version "2.1.20"
     id("application")
     jacoco
     id("com.diffplug.spotless") version "6.25.0"
@@ -27,6 +28,9 @@ dependencies {
     // Kotlin coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.7.3")
+
+    // Serialization
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
 
     // ktor network
     implementation("io.ktor:ktor-network:2.3.7")
@@ -75,6 +79,15 @@ tasks.register<JavaExec>("runKVStore") {
     description = "Run the KV Store server"
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("dolmeangi.kotlin.kvstore.KVStoreMainKt")
+    standardInput = System.`in`
+}
+
+// Custom task to run the Log Server
+tasks.register<JavaExec>("runLogServer") {
+    group = "application"
+    description = "Run the Log Server"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dolmeangi.kotlin.logserver.LogServerMainKt")
     standardInput = System.`in`
 }
 

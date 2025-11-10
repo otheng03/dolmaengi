@@ -182,6 +182,26 @@ A learning-focused implementation of a distributed, transactional key-value data
 - Many reference implementations
 - Used by etcd, TiKV
 
+### Architecture: Separated Process Model
+
+**Three-Server Architecture**
+- **Sequencer** (port 10001): Transaction ID generation, coordination
+- **KVStore** (port 10000): In-memory MVCC store, transaction validation
+- **LogServer** (port 10002): Durable write-ahead log, future Raft leader
+
+**Why Separate Processes:**
+- **Separation of Concerns**: Each process has a single responsibility
+- **Independent Scaling**: Can scale each component independently
+- **Raft Isolation**: Raft complexity contained in LogServer only
+- **Flexibility**: KVStore can be ephemeral, rebuilt from LogServer logs
+- **Learning**: Clearer understanding of distributed system boundaries
+
+**Trade-offs:**
+- Network overhead between processes
+- More complex deployment
+- Inter-process communication required
+- Better reflects real distributed systems
+
 ## Development Milestones
 
 ### Milestone 1: Single-Node CRUD ✅
@@ -191,12 +211,17 @@ A learning-focused implementation of a distributed, transactional key-value data
 - [x] Network layer with ktor
 - [x] Connection handling and line buffering
 
-### Milestone 2: Single-Node Transactions ✅ (Partial)
+### Milestone 2: Single-Node Transactions ✅
 - [x] MVCC implementation with snapshot isolation
 - [x] Transaction lifecycle (BEGIN, COMMIT, ABORT)
 - [x] Write-write conflict detection
 - [x] Version store for multi-version concurrency
-- [ ] WAL for durability (pending)
+- [x] LogServer with Write-Ahead Log (WAL) for durability
+  - Append-only log segments with CRC32 checksums
+  - JSON serialization for log entries
+  - DKSP protocol (APPEND_LOG, GET_LOGS, GET_LAST_INDEX)
+  - In-memory index for fast lookups
+  - Segment rotation support
 
 ### Milestone 3: Recovery
 - [ ] WAL replay
@@ -282,15 +307,18 @@ A learning-focused implementation of a distributed, transactional key-value data
 1. ✅ **Language chosen**: Kotlin (no Spring Boot dependency removed)
 2. ✅ **Project structure set up**: Gradle + Kotlin + ktor network
 3. ✅ **Milestone 1 Complete**: DKSP protocol, network layer, in-memory KV store
-4. ✅ **Milestone 2 Partial**: MVCC with snapshot isolation, conflict detection
-5. **Current Focus**: WAL implementation for durability (Milestone 2 completion)
-6. **Next**: Recovery manager (Milestone 3)
+4. ✅ **Milestone 2 Complete**: MVCC transactions + LogServer (WAL)
+5. **Current Focus**:
+   - Fix persistence test in LogServer (segment scanning bug)
+   - Integrate Sequencer/KVStore with LogServer for durability
+   - Add log replay on KVStore recovery
+6. **Next**: Recovery manager (Milestone 3) - WAL replay and checkpointing
 7. **Keep a design journal** documenting decisions and learnings
 
 ## Kotlin-Specific Implementation Considerations
 
 ### Serialization
-- **kotlinx.serialization**: Kotlin-native, compile-time safe
+- **kotlinx.serialization**: Kotlin-native, compile-time safe (✅ implemented for LogServer)
 - **Protocol Buffers**: Industry standard, good for RPC
 - **Apache Avro**: Schema evolution support
 - **kryo**: Fast JVM serialization
