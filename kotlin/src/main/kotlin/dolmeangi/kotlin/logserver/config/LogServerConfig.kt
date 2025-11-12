@@ -1,7 +1,5 @@
 package dolmeangi.kotlin.logserver.config
 
-import dolmeangi.kotlin.logserver.raft.model.NodeId
-
 /**
  * Configuration for the Log Server
  */
@@ -45,12 +43,6 @@ data class LogServerConfig(
     val raftEnabled: Boolean = false,
 
     /**
-     * This node's ID in the Raft cluster
-     * Required if raftEnabled is true
-     */
-    val nodeId: NodeId? = null,
-
-    /**
      * Cluster specification string
      * Format: "nodeId@host:clientPort:raftPort,..."
      * Example: "1@localhost:10002:10102,2@localhost:10003:10103,3@localhost:10004:10104"
@@ -75,7 +67,6 @@ data class LogServerConfig(
 ) {
     init {
         if (raftEnabled) {
-            require(nodeId != null) { "nodeId is required when Raft is enabled" }
             require(clusterSpec != null) { "clusterSpec is required when Raft is enabled" }
         }
     }
