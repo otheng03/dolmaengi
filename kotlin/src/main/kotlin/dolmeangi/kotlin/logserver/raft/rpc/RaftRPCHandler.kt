@@ -37,12 +37,12 @@ class RaftRPCHandler(
                 }
             }
 
-            // Serialize response
-            json.encodeToString<RaftRPC>(response)
+            // Serialize response (with newline for RPC protocol)
+            json.encodeToString<RaftRPC>(response) + "\n"
 
         } catch (e: Exception) {
             logger.error(e) { "Error handling Raft RPC: $request" }
-            "ERROR: ${e.message}"
+            "ERROR: ${e.message}\n"
         }
     }
 

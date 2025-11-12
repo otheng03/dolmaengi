@@ -433,10 +433,14 @@ class RaftNode(
     }
 
     /**
-     * Send heartbeats to all followers
+     * Send AppendEntries RPCs to all followers
      *
-     * Heartbeats are empty AppendEntries RPCs.
-     * Will be implemented in Milestone 5C.
+     * For each follower:
+     * - Send entries starting from nextIndex[follower]
+     * - On success: update nextIndex and matchIndex
+     * - On failure: decrement nextIndex and retry (happens in next heartbeat)
+     *
+     * After responses, check if we can advance commitIndex.
      */
     private fun sendHeartbeats() {
         if (!isLeader()) {
@@ -444,8 +448,211 @@ class RaftNode(
             return
         }
 
-        logger.trace { "Sending heartbeats to all followers" }
-        // TODO: Implement in Milestone 5C
+        val term = getCurrentTerm()
+        logger.trace { "Sending AppendEntries to all followers (term=$term)" }
+
+        // Send AppendEntries to each follower in parallel
+        for (peer in config.getOtherPeers()) {
+            scope.launch {
+                sendAppendEntriesToPeer(peer, term)
+            }
+        }
+    }
+
+    /**
+     * Send AppendEntries RPC to a specific peer
+     */
+    private suspend fun sendAppendEntriesToPeer(peer: dolmeangi.kotlin.logserver.raft.model.PeerInfo, term: Long) {
+        try {
+            // Get nextIndex for this peer
+            val peerNextIndex = nextIndex[peer.nodeId] ?: run {
+                logger.warn { "No nextIndex for ${peer.nodeId}" }
+                return
+            }
+
+            // Determine prevLogIndex and prevLogTerm
+            val prevLogIndex = peerNextIndex - 1
+            val prevLogTerm = if (prevLogIndex > 0) {
+                storage.getTermAt(prevLogIndex) ?: run {
+                    logger.warn { "Cannot find term at index $prevLogIndex" }
+                    return
+                }
+            } else {
+                0L
+            }
+
+            // Get entries to send (from nextIndex onwards)
+            // For now, send up to 100 entries at a time to avoid huge RPCs
+            val lastIndex = storage.getLastIndex() ?: 0
+            val entriesToSend = if (peerNextIndex <= lastIndex) {
+                val endIndex = minOf(peerNextIndex + 100 - 1, lastIndex)
+                storage.readRange(peerNextIndex, endIndex)
+            } else {
+                emptyList()
+            }
+
+            // Serialize entries to JSON
+            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            val entriesJson = entriesToSend.map { entry ->
+                json.encodeToString(dolmeangi.kotlin.logserver.model.LogEntry.serializer(), entry)
+            }
+
+            // Build request
+            val request = RaftRPC.AppendEntriesRequest(
+                term = term,
+                leaderId = config.nodeId,
+                prevLogIndex = prevLogIndex,
+                prevLogTerm = prevLogTerm,
+                entries = entriesJson,
+                leaderCommit = commitIndex
+            )
+
+            logger.trace {
+                "Sending AppendEntries to ${peer.nodeId}: " +
+                        "prevLog=$prevLogIndex/$prevLogTerm, entries=${entriesJson.size}, commit=$commitIndex"
+            }
+
+            // Send RPC
+            val response = rpcClient.sendAppendEntries(peer, request)
+
+            if (response == null) {
+                logger.debug { "No response from ${peer.nodeId} for AppendEntries" }
+                return
+            }
+
+            // Handle response
+            handleAppendEntriesResponse(peer.nodeId, request, response)
+
+        } catch (e: Exception) {
+            logger.debug(e) { "Error sending AppendEntries to ${peer.nodeId}" }
+        }
+    }
+
+    /**
+     * Handle AppendEntries response from a follower
+     */
+    private suspend fun handleAppendEntriesResponse(
+        peerId: NodeId,
+        request: RaftRPC.AppendEntriesRequest,
+        response: RaftRPC.AppendEntriesResponse
+    ) {
+        stateMutex.withLock {
+            // If we're no longer leader, ignore
+            if (!isLeader()) {
+                return
+            }
+
+            // If response term > our term, step down
+            if (response.term > getCurrentTerm()) {
+                logger.info {
+                    "Discovered higher term ${response.term} from $peerId, stepping down from leader"
+                }
+                becomeFollower(response.term, null)
+                return
+            }
+
+            // Ignore stale responses
+            if (response.term < getCurrentTerm()) {
+                return
+            }
+
+            if (response.success) {
+                // Success: update nextIndex and matchIndex
+                val newMatchIndex = if (request.entries.isNotEmpty()) {
+                    // Match index is the last entry we sent
+                    request.prevLogIndex + request.entries.size
+                } else {
+                    // Heartbeat: match index from response
+                    response.matchIndex
+                }
+
+                val oldMatchIndex = matchIndex[peerId] ?: 0
+                if (newMatchIndex > oldMatchIndex) {
+                    matchIndex[peerId] = newMatchIndex
+                    nextIndex[peerId] = newMatchIndex + 1
+
+                    logger.debug {
+                        "Updated $peerId: matchIndex=$newMatchIndex, nextIndex=${newMatchIndex + 1}"
+                    }
+
+                    // Try to advance commitIndex
+                    advanceCommitIndex()
+                }
+            } else {
+                // Failure: decrement nextIndex and retry
+                val currentNextIndex = nextIndex[peerId] ?: return
+
+                // Optimization: use matchIndex from response if available
+                val newNextIndex = if (response.matchIndex > 0) {
+                    response.matchIndex + 1
+                } else {
+                    // Simple decrement
+                    maxOf(1, currentNextIndex - 1)
+                }
+
+                nextIndex[peerId] = newNextIndex
+                logger.debug {
+                    "AppendEntries to $peerId failed, decremented nextIndex to $newNextIndex"
+                }
+            }
+        }
+    }
+
+    /**
+     * Try to advance commitIndex based on matchIndex from followers
+     *
+     * A log entry is committed if:
+     * - It's replicated on a majority of servers
+     * - It's from the current term (Raft safety requirement)
+     */
+    private suspend fun advanceCommitIndex() {
+        // Must be called within stateMutex.withLock
+
+        if (!isLeader()) {
+            return
+        }
+
+        val lastIndex = storage.getLastIndex() ?: return
+        if (lastIndex <= commitIndex) {
+            return  // No new entries to commit
+        }
+
+        // For each index from commitIndex+1 to lastIndex, check if replicated on majority
+        for (index in (commitIndex + 1)..lastIndex) {
+            // Count how many servers have replicated this entry
+            var replicatedCount = 1  // Leader has it
+
+            for (peer in config.getOtherPeers()) {
+                val peerMatchIndex = matchIndex[peer.nodeId] ?: 0
+                if (peerMatchIndex >= index) {
+                    replicatedCount++
+                }
+            }
+
+            // Check if we have a majority
+            val quorum = config.getMajorityQuorum()
+            if (replicatedCount >= quorum) {
+                // Raft safety: only commit entries from current term
+                val entryTerm = storage.getTermAt(index)
+                if (entryTerm == getCurrentTerm()) {
+                    logger.info {
+                        "Advancing commitIndex: $commitIndex -> $index " +
+                                "(replicated on $replicatedCount/${config.peers.size} servers)"
+                    }
+                    commitIndex = index
+                } else {
+                    // Entry is from an older term, but we can commit it indirectly
+                    // once we commit an entry from current term (Raft section 5.4.2)
+                    logger.trace {
+                        "Index $index replicated on majority but from old term $entryTerm, " +
+                                "waiting for current term entry"
+                    }
+                }
+            } else {
+                // Not replicated on majority yet, stop checking higher indices
+                break
+            }
+        }
     }
 
     // ===== RPC Handlers =====
@@ -584,7 +791,12 @@ class RaftNode(
      * Implements Raft AppendEntries RPC receiver logic (Figure 2 in paper).
      * This handles both heartbeats (empty entries) and log replication.
      *
-     * TODO: Implement in Milestone 5C (Log Replication)
+     * Rules from Raft paper:
+     * 1. Reply false if term < currentTerm
+     * 2. Reply false if log doesn't contain entry at prevLogIndex with prevLogTerm
+     * 3. If existing entry conflicts with new one (same index, different term), delete it and all following
+     * 4. Append any new entries not already in log
+     * 5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
      */
     suspend fun handleAppendEntries(request: RaftRPC.AppendEntriesRequest): RaftRPC.AppendEntriesResponse {
         return stateMutex.withLock {
@@ -592,7 +804,9 @@ class RaftNode(
 
             logger.trace {
                 "HandleAppendEntries from ${request.leaderId} " +
-                        "(term=${request.term} vs our $currentTerm, entries=${request.entries.size})"
+                        "(term=${request.term} vs our $currentTerm, " +
+                        "prevLog=${request.prevLogIndex}/${request.prevLogTerm}, " +
+                        "entries=${request.entries.size}, leaderCommit=${request.leaderCommit})"
             }
 
             // Rule 1: Reply false if term < currentTerm
@@ -631,13 +845,90 @@ class RaftNode(
                 resetElectionTimer()
             }
 
-            // For now, just accept heartbeats
-            // TODO: Implement log consistency checking and entry appending in Milestone 5C
-            logger.trace { "Accepted heartbeat from leader ${request.leaderId}" }
+            // Rule 2: Check log consistency at prevLogIndex
+            if (request.prevLogIndex > 0) {
+                val ourTerm = storage.getTermAt(request.prevLogIndex)
+
+                if (ourTerm == null) {
+                    // We don't have an entry at prevLogIndex
+                    logger.debug {
+                        "Rejecting AppendEntries: missing entry at prevLogIndex=${request.prevLogIndex}"
+                    }
+                    return RaftRPC.AppendEntriesResponse(
+                        term = request.term,
+                        success = false,
+                        matchIndex = storage.getLastIndex() ?: 0
+                    )
+                }
+
+                if (ourTerm != request.prevLogTerm) {
+                    // Term mismatch at prevLogIndex
+                    logger.debug {
+                        "Rejecting AppendEntries: term mismatch at prevLogIndex=${request.prevLogIndex} " +
+                                "(expected ${request.prevLogTerm}, found $ourTerm)"
+                    }
+                    return RaftRPC.AppendEntriesResponse(
+                        term = request.term,
+                        success = false,
+                        matchIndex = request.prevLogIndex - 1
+                    )
+                }
+            }
+
+            // Rule 3 & 4: Handle new entries
+            if (request.entries.isNotEmpty()) {
+                val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                val newEntries = request.entries.map { entryJson ->
+                    json.decodeFromString<dolmeangi.kotlin.logserver.model.LogEntry>(entryJson)
+                }
+
+                // Check for conflicts and truncate if needed
+                val firstNewEntryIndex = newEntries.first().index
+                val existingEntry = storage.getEntryAt(firstNewEntryIndex)
+
+                if (existingEntry != null && existingEntry.term != newEntries.first().term) {
+                    // Conflict: delete this entry and all following
+                    logger.info {
+                        "Log conflict at index $firstNewEntryIndex: " +
+                                "existing term ${existingEntry.term}, new term ${newEntries.first().term}. " +
+                                "Truncating from $firstNewEntryIndex"
+                    }
+                    storage.truncateFrom(firstNewEntryIndex)
+                }
+
+                // Append new entries
+                val lastIndex = storage.getLastIndex() ?: 0
+                val entriesToAppend = newEntries.filter { it.index > lastIndex }
+
+                if (entriesToAppend.isNotEmpty()) {
+                    logger.debug {
+                        "Appending ${entriesToAppend.size} new entries " +
+                                "(index ${entriesToAppend.first().index}..${entriesToAppend.last().index})"
+                    }
+                    storage.appendEntries(entriesToAppend)
+                }
+            }
+
+            // Rule 5: Update commitIndex
+            if (request.leaderCommit > commitIndex) {
+                val lastNewEntryIndex = storage.getLastIndex() ?: 0
+                val newCommitIndex = minOf(request.leaderCommit, lastNewEntryIndex)
+
+                if (newCommitIndex > commitIndex) {
+                    logger.debug { "Advancing commitIndex: $commitIndex -> $newCommitIndex" }
+                    commitIndex = newCommitIndex
+                }
+            }
+
+            logger.trace {
+                "Accepted AppendEntries from leader ${request.leaderId} " +
+                        "(entries=${request.entries.size}, commitIndex=$commitIndex)"
+            }
 
             return RaftRPC.AppendEntriesResponse(
                 term = request.term,
-                success = true
+                success = true,
+                matchIndex = storage.getLastIndex() ?: 0
             )
         }
     }

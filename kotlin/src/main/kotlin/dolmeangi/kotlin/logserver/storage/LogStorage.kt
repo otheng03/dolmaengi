@@ -303,11 +303,16 @@ class LogStorage(
         // Adjust nextIndex to allow new appends
         nextIndex = fromIndex
 
-        // TODO: In a full implementation, we should:
-        // 1. Truncate segment files on disk
-        // 2. Adjust or close currentSegment if needed
-        // For now, we just remove from the in-memory index and adjust nextIndex
-        // This is sufficient for Phase 1 since we rebuild from disk on restart
+        // Close currentSegment to force new segment creation on next append
+        // This is necessary because the segment tracks its own nextIndex internally
+        if (currentSegment != null) {
+            logger.debug { "Closing currentSegment due to truncation" }
+            currentSegment = null
+        }
+
+        // TODO: In a full implementation, we should also truncate segment files on disk
+        // For now, we just remove from the in-memory index and reset currentSegment
+        // This is sufficient since we rebuild from disk on restart
 
         logger.info { "Truncated $removedCount entries from index $fromIndex, nextIndex=$nextIndex" }
     }
@@ -317,6 +322,64 @@ class LogStorage(
      */
     suspend fun getEntryAt(logIndex: Long): LogEntry? {
         return read(logIndex)
+    }
+
+    /**
+     * Append entries from leader (Raft follower operation)
+     *
+     * Used by followers to append entries received from the leader.
+     * Entries already have their index and term assigned by the leader.
+     *
+     * IMPORTANT: Caller must ensure entries are in order and follow existing log.
+     * This method does NOT check for conflicts - call truncateFrom first if needed.
+     *
+     * @param entries Log entries to append (must be consecutive)
+     * @return Number of entries appended
+     */
+    suspend fun appendEntries(entries: List<LogEntry>): Int = mutex.withLock {
+        if (entries.isEmpty()) {
+            return 0
+        }
+
+        // Validate entries are consecutive
+        for (i in 1 until entries.size) {
+            require(entries[i].index == entries[i - 1].index + 1) {
+                "Entries must be consecutive: ${entries[i - 1].index} -> ${entries[i].index}"
+            }
+        }
+
+        val firstIndex = entries.first().index
+        val lastIndex = entries.last().index
+
+        // Ensure we're appending at the correct position
+        val currentLastIndex = getLastIndex() ?: 0
+        require(firstIndex == currentLastIndex + 1) {
+            "Cannot append entries starting at $firstIndex, current last index is $currentLastIndex"
+        }
+
+        logger.debug { "Appending ${entries.size} entries from leader (index $firstIndex..$lastIndex)" }
+
+        // Append each entry
+        for (entry in entries) {
+            var segment = getOrCreateCurrentSegment()
+
+            // Check if we need to rotate segment
+            if (shouldRotateSegment(segment)) {
+                rotateSegment()
+                segment = getOrCreateCurrentSegment()
+            }
+
+            // Append to segment
+            val offset = segment.append(entry)
+            val segmentPath = dataDir.resolve("log-segment-${segment.getStartIndex()}.log")
+            index.put(entry.index, segmentPath, offset)
+
+            // Update nextIndex
+            nextIndex = entry.index + 1
+        }
+
+        logger.info { "Appended ${entries.size} entries from leader, nextIndex=$nextIndex" }
+        return entries.size
     }
 
     override fun close() {

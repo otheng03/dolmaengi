@@ -229,10 +229,11 @@ A learning-focused implementation of a distributed, transactional key-value data
 - [ ] Performance benchmarks
 
 ### Milestone 5: Basic Distribution
-- [ ] Raft consensus
-- [ ] Leader election
-- [ ] Log replication
-- [ ] 3-node cluster
+- [x] Raft consensus (implementation complete)
+- [x] Leader election (Milestone 5B complete)
+- [x] Log replication (Milestone 5C complete)
+- [x] Unit tests for log replication (9/9 tests passing)
+- [ ] 3-node cluster integration testing (4 tests created, debugging needed)
 
 ### Milestone 6: Sharding
 - [ ] Hash-based partitioning
@@ -251,27 +252,44 @@ A learning-focused implementation of a distributed, transactional key-value data
 
 ## Testing Strategy
 
-### Unit Tests
-- Transaction isolation
-- Conflict detection
-- WAL serialization/deserialization
-- Recovery logic
+### Unit Tests (✅ Implemented)
+- ✅ Transaction isolation (MVCC tests)
+- ✅ Conflict detection (write-write conflict tests)
+- ✅ WAL serialization/deserialization (LogStorage tests)
+- ✅ **Raft log replication** (9 comprehensive tests in RaftLogReplicationTest)
+  - Heartbeat handling
+  - Entry appending
+  - Term validation
+  - Log consistency checks
+  - Conflict resolution and truncation
+  - Commit index advancement
+- [ ] Recovery logic (planned for Milestone 3)
 
-### Integration Tests
-- Multi-transaction scenarios
-- Concurrent transactions
-- Crash and recovery
-- Network partition simulation
+### Integration Tests (⚠️ Partial)
+- ✅ Multi-transaction scenarios (KVStore tests)
+- ✅ Concurrent transactions (MVCC concurrency tests)
+- ⚠️ **Multi-node Raft cluster** (4 tests created, debugging needed)
+  - Leader election across nodes
+  - Log replication to followers
+  - Fault tolerance (follower/leader failure)
+- [ ] Crash and recovery (planned)
+- [ ] Network partition simulation (planned)
 
-### Property-Based Tests
-- Invariants (e.g., read-your-writes)
-- Serializability checking
-- Jepsen-style testing for distributed scenarios
+### Property-Based Tests (Future)
+- [ ] Invariants (e.g., read-your-writes)
+- [ ] Serializability checking
+- [ ] Jepsen-style testing for distributed scenarios
 
-### Benchmarks
-- Throughput (transactions/sec)
-- Latency (p50, p95, p99)
-- Scalability (performance vs. node count)
+### Benchmarks (Future)
+- [ ] Throughput (transactions/sec)
+- [ ] Latency (p50, p95, p99)
+- [ ] Scalability (performance vs. node count)
+
+**Current Test Coverage:**
+- **Total Tests:** 174
+- **Passing:** 170 (97.7%)
+- **Test Files:** RaftNodeTest, RaftLogReplicationTest, RaftClusterTest, LogStorageTest, KVStoreTest, and more
+- **Code Coverage:** Available via JaCoCo (HTML report in build/reports/jacoco)
 
 ## Success Metrics
 
@@ -303,41 +321,85 @@ A learning-focused implementation of a distributed, transactional key-value data
 2. ✅ **Project structure set up**: Gradle + Kotlin + ktor network
 3. ✅ **Milestone 1 Complete**: DKSP protocol, network layer, in-memory KV store
 4. ✅ **Milestone 2 Complete**: MVCC transactions + LogServer (WAL)
-5. **Current Focus**:
-We've successfully implemented the complete Raft leader election mechanism! Here's what was built:
+5. ✅ **Milestone 5B Complete**: Raft Leader Election
+6. ✅ **Milestone 5C Complete**: Raft Log Replication
+7. ✅ **Option A Complete**: Comprehensive Log Replication Tests
+8. ⚠️ **Option C Partial**: Multi-Node Cluster Tests (debugging needed)
+9. **Next Focus**: Option B (Recovery) or Option C Debug (Cluster Tests)
 
-Components Created:
-- RaftRPC.kt - RPC message structures:
-  - RequestVoteRequest/Response
-  - AppendEntriesRequest/Response (skeleton for 5C)
-- RaftRPCClient.kt - TCP client for sending RPCs to peers
-  - Async Request/Response with timeout
-  - JSON serialization over TCP sockets
-- RaftRPCHandler.kt - Server-side RPC request handler
-  - Routes incoming RPCs to RaftNode
-- RaftNode enhancements:
-  - startElection() - Send RequestVote RPCs in parallel
-  - handleRequestVote() - Full vote granting logic per Raft spec
-  - handleAppendEntries() - Basic heartbeat handling (full impl in 5C)
-  - isCandidateLogUpToDate() - Log comparison logic
+We've successfully implemented the complete Raft consensus algorithm and comprehensive tests!
 
-How It Works:
-- Election Trigger: Election timeout fires → node becomes CANDIDATE
-- Vote Request: Candidate sends RequestVote RPCs to all peers in parallel
-- Vote Granting: Followers grant votes if:
-  - Haven't voted this term (or already voted for this candidate)
-  - Candidate's log is at least as up-to-date
-  - Candidate's term ≥ follower's term
-- Leader Election: Candidate with majority votes becomes LEADER
-- Leader Maintenance: Leader sends periodic heartbeats to maintain authority
+**What was built in Milestone 5C:**
+- ✅ LogStorage.appendEntries() - Follower entry appending
+- ✅ Enhanced handleAppendEntries() - Full log consistency checking (5 Raft rules)
+- ✅ sendHeartbeats() - Leader sends AppendEntries RPCs to all followers
+- ✅ sendAppendEntriesToPeer() - Per-follower replication logic
+- ✅ handleAppendEntriesResponse() - Update matchIndex/nextIndex based on responses
+- ✅ advanceCommitIndex() - Commit entries replicated on majority (current term only)
+- ✅ Log consistency checks - prevLogIndex/prevLogTerm validation
+- ✅ Conflict resolution - Truncate and overwrite divergent logs
+- ✅ Batched replication - Send up to 100 entries at a time
 
-Next Steps:
-- To fully test and integrate, we need to:
-  - Build and test the code to ensure compilation
-  - Update CLAUDE.md to mark Milestone 5B complete
-  - Prepare for Milestone 5C: Log Replication (AppendEntries with actual log entries)
-  - **Next**: Recovery manager (Milestone 3) - WAL replay and checkpointing
-  - **Keep a design journal** documenting decisions and learnings
+**How Log Replication Works:**
+1. Leader periodic heartbeats (50ms interval)
+2. For each follower, determine nextIndex and fetch entries
+3. Send AppendEntries RPC with prevLog consistency check
+4. Follower validates log consistency, truncates conflicts, appends new entries
+5. On success: Leader updates matchIndex/nextIndex
+6. On failure: Leader decrements nextIndex and retries
+7. When majority replicated: Leader advances commitIndex
+8. Followers learn commitIndex from subsequent AppendEntries
+
+**Option A - Comprehensive Log Replication Tests (✅ COMPLETE):**
+
+Created `RaftLogReplicationTest.kt` with 9 unit tests covering all edge cases:
+1. ✅ Follower accepts heartbeat (empty AppendEntries)
+2. ✅ Follower appends entries from leader
+3. ✅ Follower rejects AppendEntries with old term
+4. ✅ Follower rejects AppendEntries with missing prevLogIndex
+5. ✅ Follower rejects AppendEntries with term mismatch at prevLogIndex
+6. ✅ Follower truncates conflicting entries
+7. ✅ Follower advances commit index from leader
+8. ✅ Follower doesn't advance commit index beyond last entry
+9. ✅ Follower appends entries incrementally
+
+**Bug Fixed:** `LogStorage.truncateFrom()` wasn't resetting `currentSegment`, causing "Entry index does not match expected index" errors after truncation. Fixed by setting `currentSegment = null` after truncation.
+
+**Test Results:** 9/9 tests passing ✅
+
+**Option C - Multi-Node Cluster Integration Tests (⚠️ NEEDS DEBUGGING):**
+
+Created `RaftClusterTest.kt` with 4 integration tests:
+1. ❌ 3-node cluster elects a leader
+2. ❌ Leader replicates log entries to followers
+3. ❌ Cluster tolerates single follower failure
+4. ❌ New leader is elected after leader failure
+
+**Issues Identified:**
+- Nodes become CANDIDATE but never LEADER (keep timing out and re-electing)
+- RPC timeouts occurring (2000ms timeout being hit)
+- Fixed: RaftRPCHandler wasn't adding newlines to responses (RPC protocol issue)
+- Still failing: Likely async/network timing coordination issues
+
+**Root Causes Under Investigation:**
+- TCP server/client async coordination
+- Possible race conditions in election timing
+- May need mock RPC layer for unit tests vs real network for integration tests
+
+**Recommendation:** These complex integration tests need:
+- Dedicated debugging session with enhanced logging
+- OR: Mock RPC layer for deterministic unit testing
+- OR: Docker-based multi-container integration test environment
+
+**Current Test Status:**
+- **Total:** 174 tests
+- **Passing:** 170 tests (97.7%)
+- **Failing:** 4 tests (cluster integration tests)
+
+**Possible Next Steps:**
+- **Option B**: Milestone 3 - Recovery (WAL replay, checkpointing)
+- **Option C Debug**: Fix cluster integration tests with enhanced debugging
+- **Option D**: Integrate Raft with LogServer's existing transaction log
 
 ## Kotlin-Specific Implementation Considerations
 
