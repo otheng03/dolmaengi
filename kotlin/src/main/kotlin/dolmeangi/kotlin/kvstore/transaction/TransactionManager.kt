@@ -57,6 +57,11 @@ class TransactionManager(
     // Last committed transaction ID (for snapshot isolation)
     private val lastCommittedTxnId = AtomicLong(0)
 
+    // Tracks last commit version for each key
+    // Used for fast conflict detection
+    // Maps key -> transaction ID that last wrote to it
+    private val lastCommit = ConcurrentHashMap<String, Long>()
+
     /**
      * Begin a new transaction
      * Now uses SequencerClient to get distributed transaction IDs
@@ -89,6 +94,9 @@ class TransactionManager(
      */
     fun get(txnId: TransactionId, key: String): String? {
         val txn = getActiveTransaction(txnId)
+
+        // Track this read for conflict detection
+        txn.readSet.add(key)
 
         // First check transaction's write set
         txn.writeSet[key]?.let { return it }
@@ -155,22 +163,27 @@ class TransactionManager(
 
         // Serialize commits to detect conflicts
         return commitLock.write {
-            // Validate write-write conflicts
-            for (key in txn.writeSet.keys) {
-                val versions = versionStore[key]
-                if (versions != null) {
-                    synchronized(versions) {
-                        // Check if any committed transaction after our snapshot wrote to this key
-                        val hasConflict = versions.any { version ->
-                            version.txnId > txn.snapshotVersion
-                        }
+            // Check conflicts using lastCommit map
 
-                        if (hasConflict) {
-                            logger.debug { "Transaction ${txnId.value} aborted: conflict on key '$key'" }
-                            txn.state = TransactionState.ABORTED
-                            return CommitResult.Conflict(key)
-                        }
-                    }
+            // Step 1: Check read-write conflicts
+            // For each key we read, check if someone wrote to it after our snapshot
+            for (readKey in txn.readSet) {
+                val lastWriteVersion = lastCommit[readKey]
+                if (lastWriteVersion != null && lastWriteVersion > txn.snapshotVersion) {
+                    logger.debug { "Transaction ${txnId.value} aborted: read-write conflict on key '$readKey' (lastWrite: $lastWriteVersion, snapshot: ${txn.snapshotVersion})" }
+                    txn.state = TransactionState.ABORTED
+                    return CommitResult.Conflict(readKey)
+                }
+            }
+
+            // Step 2: Check write-write conflicts
+            // For each key we wrote, check if someone wrote to it after our snapshot
+            for (writeKey in txn.writeSet.keys) {
+                val lastWriteVersion = lastCommit[writeKey]
+                if (lastWriteVersion != null && lastWriteVersion > txn.snapshotVersion) {
+                    logger.debug { "Transaction ${txnId.value} aborted: write-write conflict on key '$writeKey' (lastWrite: $lastWriteVersion, snapshot: ${txn.snapshotVersion})" }
+                    txn.state = TransactionState.ABORTED
+                    return CommitResult.Conflict(writeKey)
                 }
             }
 
@@ -189,6 +202,12 @@ class TransactionManager(
                         versions.add(Version(commitTxnId, null))
                     }
                 }
+            }
+
+            // Step 3: Update lastCommit for all written keys
+            // This allows future transactions to detect conflicts with this commit
+            for (key in txn.writeSet.keys) {
+                lastCommit[key] = commitTxnId
             }
 
             // Update last committed transaction ID
@@ -264,7 +283,8 @@ data class Transaction(
     val id: TransactionId,
     val snapshotVersion: Long,
     var state: TransactionState,
-    val writeSet: MutableMap<String, String?> = mutableMapOf()
+    val writeSet: MutableMap<String, String?> = mutableMapOf(),
+    val readSet: MutableSet<String> = mutableSetOf()  // Track reads for conflict detection
 )
 
 /**

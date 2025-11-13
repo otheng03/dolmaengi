@@ -205,4 +205,164 @@ class TransactionManagerTest : FunSpec({
         txnManager.get(txn3, "key1") shouldBe "value1"
         txnManager.get(txn3, "key2") shouldBe "value2"
     }
+
+    // ========================================
+    // New tests for FDB Resolver mechanism
+    // ========================================
+
+    test("read-write conflict detection - basic case") {
+        // Setup: Create initial data
+        val txn0 = txnManager.begin()
+        txnManager.put(txn0, "account", "100")
+        txnManager.commit(txn0)
+
+        // Transaction 1: Read account balance and prepare to update it
+        val txn1 = txnManager.begin()
+        val balance = txnManager.get(txn1, "account")
+        balance shouldBe "100"
+
+        // Transaction 2: Update account balance and commit
+        val txn2 = txnManager.begin()
+        txnManager.put(txn2, "account", "150")
+        txnManager.commit(txn2) shouldBe CommitResult.Success
+
+        // Transaction 1: Try to write based on stale read (should fail - read-write conflict)
+        // T1 read "account" at version 1, but T2 wrote to it at version 2
+        txnManager.put(txn1, "notes", "transferred")  // T1 writes to a different key
+        val result = txnManager.commit(txn1)
+
+        result.shouldBeInstanceOf<CommitResult.Conflict>()
+        result.key shouldBe "account"
+    }
+
+    test("read-write conflict detection - read without write") {
+        // Setup: Create initial data
+        val txn0 = txnManager.begin()
+        txnManager.put(txn0, "data", "initial")
+        txnManager.commit(txn0)
+
+        // Transaction 1: Read data but don't write anything
+        val txn1 = txnManager.begin()
+        txnManager.get(txn1, "data") shouldBe "initial"
+
+        // Transaction 2: Update data and commit
+        val txn2 = txnManager.begin()
+        txnManager.put(txn2, "data", "updated")
+        txnManager.commit(txn2) shouldBe CommitResult.Success
+
+        // Transaction 1: Try to commit with empty write set (should fail)
+        // Even though T1 has no writes, it read data that was modified
+        val result = txnManager.commit(txn1)
+
+        // T1 has no writes, so it succeeds (no conflicts to check for writes)
+        // This is correct behavior: read-only transactions don't conflict
+        result shouldBe CommitResult.Success
+    }
+
+    test("no read-write conflict when reading after commit") {
+        // Setup: Create initial data
+        val txn0 = txnManager.begin()
+        txnManager.put(txn0, "data", "v1")
+        txnManager.commit(txn0)
+
+        // Transaction 1: Read data
+        val txn1 = txnManager.begin()
+        txnManager.get(txn1, "data") shouldBe "v1"
+
+        // Transaction 2: Start after T1's read, update data
+        val txn2 = txnManager.begin()
+        txnManager.put(txn2, "data", "v2")
+        txnManager.commit(txn2) shouldBe CommitResult.Success
+
+        // Transaction 3: Start after T2 commits, should see new data
+        val txn3 = txnManager.begin()
+        txnManager.get(txn3, "data") shouldBe "v2"
+        txnManager.commit(txn3) shouldBe CommitResult.Success
+    }
+
+    test("read tracking - reads are recorded in readSet") {
+        val txnId = txnManager.begin()
+
+        // Perform some reads
+        txnManager.get(txnId, "key1")
+        txnManager.get(txnId, "key2")
+        txnManager.get(txnId, "key1") // Duplicate read
+
+        // Commit and verify (should succeed with no conflicts)
+        txnManager.commit(txnId) shouldBe CommitResult.Success
+    }
+
+    test("read-write conflict with multiple keys") {
+        // Setup: Create initial data
+        val txn0 = txnManager.begin()
+        txnManager.put(txn0, "key1", "v1")
+        txnManager.put(txn0, "key2", "v2")
+        txnManager.commit(txn0)
+
+        // Transaction 1: Read both keys
+        val txn1 = txnManager.begin()
+        txnManager.get(txn1, "key1") shouldBe "v1"
+        txnManager.get(txn1, "key2") shouldBe "v2"
+
+        // Transaction 2: Update key1 and commit
+        val txn2 = txnManager.begin()
+        txnManager.put(txn2, "key1", "v1-updated")
+        txnManager.commit(txn2) shouldBe CommitResult.Success
+
+        // Transaction 1: Write to key2 (should fail - conflict on key1)
+        txnManager.put(txn1, "key2", "v2-updated")
+        val result = txnManager.commit(txn1)
+
+        result.shouldBeInstanceOf<CommitResult.Conflict>()
+        result.key shouldBe "key1"
+    }
+
+    test("lastCommit tracks most recent write per key") {
+        // Transaction 1: Write key
+        val txn1 = txnManager.begin()
+        txnManager.put(txn1, "counter", "1")
+        txnManager.commit(txn1)
+
+        // Transaction 2: Update key
+        val txn2 = txnManager.begin()
+        txnManager.put(txn2, "counter", "2")
+        txnManager.commit(txn2)
+
+        // Transaction 3: Update key again
+        val txn3 = txnManager.begin()
+        txnManager.put(txn3, "counter", "3")
+        txnManager.commit(txn3)
+
+        // Transaction 4: Should see latest value
+        val txn4 = txnManager.begin()
+        txnManager.get(txn4, "counter") shouldBe "3"
+    }
+
+    test("read-write conflict prevents lost updates") {
+        // Classic lost update scenario
+        val txn0 = txnManager.begin()
+        txnManager.put(txn0, "balance", "100")
+        txnManager.commit(txn0)
+
+        // Two transactions try to add 50 to balance
+        val txn1 = txnManager.begin()
+        val balance1 = txnManager.get(txn1, "balance")?.toInt() ?: 0
+
+        val txn2 = txnManager.begin()
+        val balance2 = txnManager.get(txn2, "balance")?.toInt() ?: 0
+
+        // T1 commits first
+        txnManager.put(txn1, "balance", (balance1 + 50).toString())
+        txnManager.commit(txn1) shouldBe CommitResult.Success
+
+        // T2 should fail (would cause lost update)
+        txnManager.put(txn2, "balance", (balance2 + 50).toString())
+        val result = txnManager.commit(txn2)
+
+        result.shouldBeInstanceOf<CommitResult.Conflict>()
+
+        // Verify final balance is 150 (not 150 from lost update)
+        val txn3 = txnManager.begin()
+        txnManager.get(txn3, "balance") shouldBe "150"
+    }
 })

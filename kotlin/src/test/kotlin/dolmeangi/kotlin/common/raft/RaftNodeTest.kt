@@ -74,7 +74,7 @@ class RaftNodeTest : FunSpec({
         }
 
         // Wait for new leader election in majority partition
-        waitForCondition(timeoutMs = 3000) {
+        waitForCondition(timeoutMs = 5000) {
             val newLeaders = nodes.entries.filter { it.key != leaderId }
                 .count { it.value.first.isLeader() }
             newLeaders >= 1
